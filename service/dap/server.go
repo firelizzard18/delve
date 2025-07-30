@@ -1522,20 +1522,26 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 				err = errors.New("breakpoint already exists")
 			} else {
 				bp := &api.Breakpoint{
-					Name:    want.name,
-					File:    wantLoc.file,
-					Line:    wantLoc.line,
-					Addr:    wantLoc.addr,
-					Addrs:   wantLoc.addrs,
-					Cond:    want.condition,
-					HitCond: want.hitCondition,
+					Name:         want.name,
+					File:         wantLoc.file,
+					Line:         wantLoc.line,
+					Addr:         wantLoc.addr,
+					Addrs:        wantLoc.addrs,
+					Cond:         want.condition,
+					HitCond:      want.hitCondition,
+					DidUnsuspend: s.didUnsuspendBreakpoint,
 				}
 				err = setLogMessage(bp, want.logMessage)
 				if err == nil {
 					// Create new breakpoints.
-					got, err = s.debugger.CreateBreakpoint(bp, "", nil, false)
+					got, err = s.debugger.CreateBreakpoint(bp, "", nil, true)
 				}
 			}
+		}
+		if len(got.Addrs) == 0 {
+			// Handle suspended breakpoints.
+			got.File = wantLoc.file
+			got.Line = wantLoc.line
 		}
 		createdBps[want.name] = struct{}{}
 		s.updateBreakpointsResponse(breakpoints, i, err, got)
@@ -1556,7 +1562,11 @@ func setLogMessage(bp *api.Breakpoint, msg string) error {
 }
 
 func (s *Session) updateBreakpointsResponse(breakpoints []dap.Breakpoint, i int, err error, got *api.Breakpoint) {
-	breakpoints[i].Verified = err == nil
+	if len(got.Addrs) > 0 {
+		breakpoints[i].Verified = true
+	} else {
+		breakpoints[i].Message = "Unable to set breakpoint"
+	}
 	if err != nil {
 		breakpoints[i].Message = err.Error()
 	} else {
@@ -1565,6 +1575,22 @@ func (s *Session) updateBreakpointsResponse(breakpoints []dap.Breakpoint, i int,
 		breakpoints[i].Line = got.Line
 		breakpoints[i].Source = &dap.Source{Name: filepath.Base(path), Path: path}
 	}
+}
+
+func (s *Session) didUnsuspendBreakpoint(bp *api.Breakpoint) {
+	path := s.toClientPath(bp.File)
+	s.send(&dap.BreakpointEvent{
+		Event: *newEvent("breakpoint"),
+		Body: dap.BreakpointEventBody{
+			Reason: "changed",
+			Breakpoint: dap.Breakpoint{
+				Verified: true,
+				Id:       bp.ID,
+				Line:     bp.Line,
+				Source:   &dap.Source{Name: filepath.Base(path), Path: path},
+			},
+		},
+	})
 }
 
 // functionBpPrefix is the prefix of bp.Name for every breakpoint bp set

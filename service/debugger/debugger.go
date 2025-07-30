@@ -800,6 +800,13 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string,
 
 	createdBp := d.convertBreakpoint(lbp)
 	d.log.Infof("created breakpoint: %#v", createdBp)
+
+	if requestedBp.DidUnsuspend != nil {
+		lbp.DidUnsuspend = func(*proc.LogicalBreakpoint) {
+			requestedBp.DidUnsuspend(createdBp)
+		}
+	}
+
 	return createdBp, nil
 }
 

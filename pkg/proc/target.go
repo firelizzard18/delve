@@ -585,6 +585,9 @@ func (t *Target) pluginOpenCallback(Thread, *Target) (bool, error) {
 			} else {
 				logger.Debugf("suspended breakpoint %d enabled", lbp.LogicalID)
 			}
+			if lbp.DidUnsuspend != nil {
+				lbp.DidUnsuspend(lbp)
+			}
 		}
 	}
 	return false, nil
