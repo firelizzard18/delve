@@ -584,9 +584,10 @@ func (t *Target) pluginOpenCallback(Thread, *Target) (bool, error) {
 				logger.Debugf("could not enable breakpoint %d: %v", lbp.LogicalID, err)
 			} else {
 				logger.Debugf("suspended breakpoint %d enabled", lbp.LogicalID)
-			}
-			if lbp.DidUnsuspend != nil {
-				lbp.DidUnsuspend(lbp)
+				if !lbp.Unsuspended && lbp.UnsuspendCallback != nil {
+					lbp.UnsuspendCallback()
+					lbp.Unsuspended = true
+				}
 			}
 		}
 	}

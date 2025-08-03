@@ -673,7 +673,7 @@ func (d *Debugger) state(retLoadCfg *proc.LoadConfig, withBreakpointInfo bool) (
 // If suspended is true a logical breakpoint will be created even if the
 // location can not be found, the backend will attempt to enable the
 // breakpoint every time a new plugin is loaded.
-func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string, substitutePathRules [][2]string, suspended bool) (*api.Breakpoint, error) {
+func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string, substitutePathRules [][2]string, suspended bool, unsuspendCallback func(*api.Breakpoint)) (*api.Breakpoint, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -792,6 +792,7 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string,
 	if err != nil {
 		if suspended {
 			logflags.DebuggerLogger().Debugf("could not enable new breakpoint: %v (breakpoint will be suspended)", err)
+			err = errors.New("suspended breakpoint")
 		} else {
 			delete(d.target.LogicalBreakpoints, lbp.LogicalID)
 			return nil, err
@@ -801,13 +802,13 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string,
 	createdBp := d.convertBreakpoint(lbp)
 	d.log.Infof("created breakpoint: %#v", createdBp)
 
-	if requestedBp.DidUnsuspend != nil {
-		lbp.DidUnsuspend = func(*proc.LogicalBreakpoint) {
-			requestedBp.DidUnsuspend(createdBp)
+	if err != nil && suspended {
+		lbp.UnsuspendCallback = func() {
+			unsuspendCallback(createdBp)
 		}
 	}
 
-	return createdBp, nil
+	return createdBp, err
 }
 
 func (d *Debugger) convertBreakpoint(lbp *proc.LogicalBreakpoint) *api.Breakpoint {

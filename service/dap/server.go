@@ -1522,23 +1522,22 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 				err = errors.New("breakpoint already exists")
 			} else {
 				bp := &api.Breakpoint{
-					Name:         want.name,
-					File:         wantLoc.file,
-					Line:         wantLoc.line,
-					Addr:         wantLoc.addr,
-					Addrs:        wantLoc.addrs,
-					Cond:         want.condition,
-					HitCond:      want.hitCondition,
-					DidUnsuspend: s.didUnsuspendBreakpoint,
+					Name:    want.name,
+					File:    wantLoc.file,
+					Line:    wantLoc.line,
+					Addr:    wantLoc.addr,
+					Addrs:   wantLoc.addrs,
+					Cond:    want.condition,
+					HitCond: want.hitCondition,
 				}
 				err = setLogMessage(bp, want.logMessage)
 				if err == nil {
 					// Create new breakpoints.
-					got, err = s.debugger.CreateBreakpoint(bp, "", nil, true)
+					got, err = s.debugger.CreateBreakpoint(bp, "", nil, true, s.didUnsuspendBreakpoint)
 				}
 			}
 		}
-		if len(got.Addrs) == 0 {
+		if err != nil && err.Error() == "suspended breakpoint" {
 			// Handle suspended breakpoints.
 			got.File = wantLoc.file
 			got.Line = wantLoc.line
@@ -1562,12 +1561,8 @@ func setLogMessage(bp *api.Breakpoint, msg string) error {
 }
 
 func (s *Session) updateBreakpointsResponse(breakpoints []dap.Breakpoint, i int, err error, got *api.Breakpoint) {
-	if len(got.Addrs) > 0 {
-		breakpoints[i].Verified = true
-	} else {
-		breakpoints[i].Message = "Unable to set breakpoint"
-	}
-	if err != nil {
+	breakpoints[i].Verified = err == nil
+	if err != nil && err.Error() != "suspended breakpoint" {
 		breakpoints[i].Message = err.Error()
 	} else {
 		path := s.toClientPath(got.File)
@@ -1575,6 +1570,8 @@ func (s *Session) updateBreakpointsResponse(breakpoints []dap.Breakpoint, i int,
 		breakpoints[i].Line = got.Line
 		breakpoints[i].Source = &dap.Source{Name: filepath.Base(path), Path: path}
 	}
+	// TODO For DAP v1.68.0, Reason can be set to "pending" when a breakpoint is suspended.
+	// But it seems that nothing different happens.
 }
 
 func (s *Session) didUnsuspendBreakpoint(bp *api.Breakpoint) {
